@@ -23,6 +23,8 @@ import javax.ws.rs.container.ContainerResponseContext;
 import javax.ws.rs.container.ContainerResponseFilter;
 import javax.ws.rs.ext.Provider;
 
+import io.confluent.kafkarest.response.ListenableChunkedOutput;
+
 @Provider
 @Singleton
 public class KafkaRestCleanupFilter implements ContainerResponseFilter {
@@ -32,6 +34,11 @@ public class KafkaRestCleanupFilter implements ContainerResponseFilter {
       ContainerRequestContext requestContext,
       ContainerResponseContext responseContext
   ) throws IOException {
-    KafkaRestContextProvider.clearCurrentContext();
+    if (responseContext.getEntity() instanceof ListenableChunkedOutput) {
+      ((ListenableChunkedOutput) responseContext.getEntity())
+          .onClose(throwable -> KafkaRestContextProvider.clearCurrentContext());
+    } else  {
+      KafkaRestContextProvider.clearCurrentContext();
+    }
   }
 }

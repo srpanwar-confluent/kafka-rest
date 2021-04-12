@@ -34,13 +34,15 @@ import io.confluent.rest.exceptions.KafkaExceptionMapper;
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import javax.annotation.Nullable;
 import javax.ws.rs.container.AsyncResponse;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.Status;
 import javax.ws.rs.ext.ExceptionMapper;
-import org.glassfish.jersey.server.ChunkedOutput;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -107,7 +109,10 @@ public abstract class StreamingResponse<T> {
     while (hasNext()) {
       responseQueue.push(next().handle(this::handleNext));
     }
-    responseQueue.close();
+    ScheduledExecutorService executor = Executors.newScheduledThreadPool(1);
+    executor.schedule(() -> {
+      responseQueue.close();
+    }, 10, TimeUnit.SECONDS);
   }
 
   private ResultOrError handleNext(T result, @Nullable Throwable error) {
@@ -169,7 +174,7 @@ public abstract class StreamingResponse<T> {
   private static final class AsyncResponseQueue {
     private static final String CHUNK_SEPARATOR = "\r\n";
 
-    private final ChunkedOutput<ResultOrError> sink;
+    private final ListenableChunkedOutput<ResultOrError> sink;
 
     // tail is the end of a linked list of completable futures. The futures are tied together by
     // allOf completion handles. For example, let's say we push 3 futures into the queue:
@@ -185,7 +190,7 @@ public abstract class StreamingResponse<T> {
     private CompletableFuture<Void> tail;
 
     private AsyncResponseQueue() {
-      sink = new ChunkedOutput<>(ResultOrError.class, CHUNK_SEPARATOR);
+      sink = new ListenableChunkedOutput<>(ResultOrError.class, CHUNK_SEPARATOR);
       tail = CompletableFuture.completedFuture(null);
     }
 
